@@ -2,14 +2,21 @@ package personal_project.personal_project.service;
 
 import io.github.thoroldvix.api.*;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
 import org.springframework.stereotype.Service;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.util.List;
 
 /**
  * Fetches raw subtitle data from YouTube using the io.github.thoroldvix:youtube-transcript-api
  * Java library, which correctly handles YouTube's internal scraping, player response parsing,
  * and timedtext API calls.
+ *
+ * Supports optional HTTP proxy via PROXY_HOST, PROXY_PORT, PROXY_USERNAME, PROXY_PASSWORD env vars
+ * to bypass YouTube bot detection on cloud servers.
  *
  * The result is returned as a simple XML string compatible with SubtitleParser.
  */
@@ -20,7 +27,32 @@ public class SubtitleFetcher {
     private final YoutubeTranscriptApi youtubeTranscriptApi;
 
     public SubtitleFetcher() {
-        this.youtubeTranscriptApi = TranscriptApiFactory.createDefault();
+        String proxyHost = System.getenv("PROXY_HOST");
+        String proxyPort = System.getenv("PROXY_PORT");
+        String proxyUser = System.getenv("PROXY_USERNAME");
+        String proxyPass = System.getenv("PROXY_PASSWORD");
+
+        if (proxyHost != null && !proxyHost.isBlank() && proxyPort != null && !proxyPort.isBlank()) {
+            log.info("Configuring YouTube transcript API with proxy: {}:{}", proxyHost, proxyPort);
+            Proxy proxy = new Proxy(Proxy.Type.HTTP,
+                    new InetSocketAddress(proxyHost, Integer.parseInt(proxyPort)));
+
+            OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder().proxy(proxy);
+
+            if (proxyUser != null && !proxyUser.isBlank()) {
+                clientBuilder.proxyAuthenticator((route, response) -> {
+                    String credential = Credentials.basic(proxyUser, proxyPass != null ? proxyPass : "");
+                    return response.request().newBuilder()
+                            .header("Proxy-Authorization", credential)
+                            .build();
+                });
+            }
+
+            this.youtubeTranscriptApi = TranscriptApiFactory.createWithClient(clientBuilder.build());
+        } else {
+            log.info("No proxy configured, using default YouTube transcript API client");
+            this.youtubeTranscriptApi = TranscriptApiFactory.createDefault();
+        }
     }
 
     /**

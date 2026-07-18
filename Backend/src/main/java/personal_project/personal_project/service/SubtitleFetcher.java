@@ -11,6 +11,9 @@ import java.util.List;
  * Java library, which correctly handles YouTube's internal scraping, player response parsing,
  * and timedtext API calls.
  *
+ * Supports optional HTTP proxy via PROXY_HOST, PROXY_PORT, PROXY_USERNAME, PROXY_PASSWORD env vars
+ * to bypass YouTube bot detection on cloud servers. Proxy is configured via JVM system properties.
+ *
  * The result is returned as a simple XML string compatible with SubtitleParser.
  */
 @Slf4j
@@ -20,6 +23,36 @@ public class SubtitleFetcher {
     private final YoutubeTranscriptApi youtubeTranscriptApi;
 
     public SubtitleFetcher() {
+        String proxyHost = System.getenv("PROXY_HOST");
+        String proxyPort = System.getenv("PROXY_PORT");
+        String proxyUser = System.getenv("PROXY_USERNAME");
+        String proxyPass = System.getenv("PROXY_PASSWORD");
+
+        if (proxyHost != null && !proxyHost.isBlank() && proxyPort != null && !proxyPort.isBlank()) {
+            log.info("Configuring HTTP proxy: {}:{}", proxyHost, proxyPort);
+            // Set JVM-level proxy — works with any HTTP client the library uses internally
+            System.setProperty("http.proxyHost", proxyHost);
+            System.setProperty("http.proxyPort", proxyPort);
+            System.setProperty("https.proxyHost", proxyHost);
+            System.setProperty("https.proxyPort", proxyPort);
+            if (proxyUser != null && !proxyUser.isBlank()) {
+                System.setProperty("http.proxyUser", proxyUser);
+                System.setProperty("http.proxyPassword", proxyPass != null ? proxyPass : "");
+                System.setProperty("https.proxyUser", proxyUser);
+                System.setProperty("https.proxyPassword", proxyPass != null ? proxyPass : "");
+                // Required for authenticated proxies in Java
+                java.net.Authenticator.setDefault(new java.net.Authenticator() {
+                    @Override
+                    protected java.net.PasswordAuthentication getPasswordAuthentication() {
+                        return new java.net.PasswordAuthentication(proxyUser,
+                                (proxyPass != null ? proxyPass : "").toCharArray());
+                    }
+                });
+            }
+        } else {
+            log.info("No proxy configured, using default YouTube transcript API client");
+        }
+
         this.youtubeTranscriptApi = TranscriptApiFactory.createDefault();
     }
 

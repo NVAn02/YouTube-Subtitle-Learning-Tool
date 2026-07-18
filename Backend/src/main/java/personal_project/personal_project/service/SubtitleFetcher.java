@@ -67,6 +67,8 @@ public class SubtitleFetcher {
         }
     }
 
+    private static final String COOKIES_PATH = "/app/cookies.txt";
+
     private String fetchWithYtDlp(String videoId) throws Exception {
         String tmpDir = System.getProperty("java.io.tmpdir");
         String outTemplate = tmpDir + "/yt-subtitle-" + UUID.randomUUID() + ".%(ext)s";
@@ -76,6 +78,7 @@ public class SubtitleFetcher {
         // --sub-lang        → prefer English
         // --skip-download   → don't download video
         // --convert-subs vtt → convert to VTT format
+        // --js-runtimes node → use Node.js as JS runtime
         List<String> cmd = new ArrayList<>(List.of(
                 "yt-dlp",
                 "--write-auto-sub",
@@ -86,8 +89,20 @@ public class SubtitleFetcher {
                 "-o", outTemplate,
                 "--no-playlist",
                 "--quiet",
-                "https://www.youtube.com/watch?v=" + videoId
+                "--js-runtimes", "node"
         ));
+
+        // Add cookies if available (bypasses YouTube bot detection)
+        File cookiesFile = new File(COOKIES_PATH);
+        if (cookiesFile.exists() && cookiesFile.isFile()) {
+            cmd.add("--cookies");
+            cmd.add(COOKIES_PATH);
+            log.debug("Using cookies from {}", COOKIES_PATH);
+        } else {
+            log.warn("No cookies file found at {}. YouTube may block requests as bot detection.", COOKIES_PATH);
+        }
+
+        cmd.add("https://www.youtube.com/watch?v=" + videoId);
 
         log.debug("Running yt-dlp for videoId={}", videoId);
         ProcessBuilder pb = new ProcessBuilder(cmd);

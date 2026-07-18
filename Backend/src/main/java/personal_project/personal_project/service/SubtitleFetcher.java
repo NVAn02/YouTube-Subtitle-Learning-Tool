@@ -2,12 +2,8 @@ package personal_project.personal_project.service;
 
 import io.github.thoroldvix.api.*;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.Credentials;
-import okhttp3.OkHttpClient;
 import org.springframework.stereotype.Service;
 
-import java.net.InetSocketAddress;
-import java.net.Proxy;
 import java.util.List;
 
 /**
@@ -16,7 +12,7 @@ import java.util.List;
  * and timedtext API calls.
  *
  * Supports optional HTTP proxy via PROXY_HOST, PROXY_PORT, PROXY_USERNAME, PROXY_PASSWORD env vars
- * to bypass YouTube bot detection on cloud servers.
+ * to bypass YouTube bot detection on cloud servers. Proxy is configured via JVM system properties.
  *
  * The result is returned as a simple XML string compatible with SubtitleParser.
  */
@@ -33,26 +29,31 @@ public class SubtitleFetcher {
         String proxyPass = System.getenv("PROXY_PASSWORD");
 
         if (proxyHost != null && !proxyHost.isBlank() && proxyPort != null && !proxyPort.isBlank()) {
-            log.info("Configuring YouTube transcript API with proxy: {}:{}", proxyHost, proxyPort);
-            Proxy proxy = new Proxy(Proxy.Type.HTTP,
-                    new InetSocketAddress(proxyHost, Integer.parseInt(proxyPort)));
-
-            OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder().proxy(proxy);
-
+            log.info("Configuring HTTP proxy: {}:{}", proxyHost, proxyPort);
+            // Set JVM-level proxy — works with any HTTP client the library uses internally
+            System.setProperty("http.proxyHost", proxyHost);
+            System.setProperty("http.proxyPort", proxyPort);
+            System.setProperty("https.proxyHost", proxyHost);
+            System.setProperty("https.proxyPort", proxyPort);
             if (proxyUser != null && !proxyUser.isBlank()) {
-                clientBuilder.proxyAuthenticator((route, response) -> {
-                    String credential = Credentials.basic(proxyUser, proxyPass != null ? proxyPass : "");
-                    return response.request().newBuilder()
-                            .header("Proxy-Authorization", credential)
-                            .build();
+                System.setProperty("http.proxyUser", proxyUser);
+                System.setProperty("http.proxyPassword", proxyPass != null ? proxyPass : "");
+                System.setProperty("https.proxyUser", proxyUser);
+                System.setProperty("https.proxyPassword", proxyPass != null ? proxyPass : "");
+                // Required for authenticated proxies in Java
+                java.net.Authenticator.setDefault(new java.net.Authenticator() {
+                    @Override
+                    protected java.net.PasswordAuthentication getPasswordAuthentication() {
+                        return new java.net.PasswordAuthentication(proxyUser,
+                                (proxyPass != null ? proxyPass : "").toCharArray());
+                    }
                 });
             }
-
-            this.youtubeTranscriptApi = TranscriptApiFactory.createWithClient(clientBuilder.build());
         } else {
             log.info("No proxy configured, using default YouTube transcript API client");
-            this.youtubeTranscriptApi = TranscriptApiFactory.createDefault();
         }
+
+        this.youtubeTranscriptApi = TranscriptApiFactory.createDefault();
     }
 
     /**

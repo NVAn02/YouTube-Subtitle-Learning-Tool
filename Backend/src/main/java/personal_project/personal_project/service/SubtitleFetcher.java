@@ -74,11 +74,12 @@ public class SubtitleFetcher {
         String outTemplate = tmpDir + "/yt-subtitle-" + UUID.randomUUID() + ".%(ext)s";
 
         // Build yt-dlp command:
-        // --write-auto-sub  → auto-generated subtitles
-        // --sub-lang        → prefer English
-        // --skip-download   → don't download video
-        // --convert-subs vtt → convert to VTT format
-        // --js-runtimes node → use Node.js as JS runtime
+        // --write-auto-sub      → auto-generated subtitles
+        // --sub-lang            → prefer English
+        // --skip-download       → don't download video
+        // --convert-subs vtt    → convert to VTT format
+        // --js-runtimes node    → use Node.js as JS runtime
+        // --remote-components   → download EJS challenge solver (bypasses n-challenge bot detection)
         List<String> cmd = new ArrayList<>(List.of(
                 "yt-dlp",
                 "--write-auto-sub",
@@ -89,7 +90,8 @@ public class SubtitleFetcher {
                 "-o", outTemplate,
                 "--no-playlist",
                 "--quiet",
-                "--js-runtimes", "node"
+                "--js-runtimes", "node",
+                "--remote-components", "ejs:github"
         ));
 
         // Add cookies if available (bypasses YouTube bot detection)

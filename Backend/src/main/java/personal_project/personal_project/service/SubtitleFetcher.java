@@ -1,6 +1,7 @@
 package personal_project.personal_project.service;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -22,6 +23,9 @@ import java.util.UUID;
 @Slf4j
 @Service
 public class SubtitleFetcher {
+
+    @Value("${ytdlp.proxy-url:}")
+    private String proxyUrl;
 
     /**
      * Fetch raw subtitle content for a given YouTube video ID.
@@ -94,14 +98,21 @@ public class SubtitleFetcher {
                 "--remote-components", "ejs:github"
         ));
 
-        // Add cookies if available (bypasses YouTube bot detection)
-        File cookiesFile = new File(COOKIES_PATH);
-        if (cookiesFile.exists() && cookiesFile.isFile()) {
-            cmd.add("--cookies");
-            cmd.add(COOKIES_PATH);
-            log.debug("Using cookies from {}", COOKIES_PATH);
+        // Add proxy if configured (preferred — eliminates cookie expiration issues)
+        if (proxyUrl != null && !proxyUrl.isBlank()) {
+            cmd.add("--proxy");
+            cmd.add(proxyUrl);
+            log.debug("Using proxy for yt-dlp");
         } else {
-            log.warn("No cookies file found at {}. YouTube may block requests as bot detection.", COOKIES_PATH);
+            // Fallback: use cookies if no proxy is configured
+            File cookiesFile = new File(COOKIES_PATH);
+            if (cookiesFile.exists() && cookiesFile.isFile()) {
+                cmd.add("--cookies");
+                cmd.add(COOKIES_PATH);
+                log.debug("Using cookies from {}", COOKIES_PATH);
+            } else {
+                log.warn("No proxy or cookies configured. YouTube may block requests as bot detection.");
+            }
         }
 
         cmd.add("https://www.youtube.com/watch?v=" + videoId);

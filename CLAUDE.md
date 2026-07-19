@@ -59,6 +59,15 @@ Single-page app, no router. `App.vue` owns top-level state (subtitles, current v
 
 Subtitle fetching depends on `cookies.txt` (YouTube auth cookies) and an up-to-date yt-dlp with working n-challenge bypass — this has broken repeatedly (see recent commit history). If subtitle fetches start failing, check yt-dlp's version/remote-components cache and whether `cookies.txt` has expired before assuming an application bug.
 
+Cloud VPS deployments (e.g. Oracle free tier) get IP-blocked by YouTube outright, no matter how fresh yt-dlp/cookies are, because the datacenter IP range itself is flagged. The fix is a proxy: `YTDLP_PROXY_URL` (env var) → `ytdlp.proxy-url` (`application.properties`) → `SubtitleFetcher.proxyUrl` → appended as `--proxy <url>` to the yt-dlp command. Leave it unset for local dev (no proxy, direct connection).
+
+- **Provider**: ScraperAPI (free tier: 1,000 req/mo, 5 concurrent connections). Sign up at scraperapi.com for an API key.
+- **URL format**: `http://scraperapi:<API_KEY>@proxy-server.scraperapi.com:8001`.
+- **`--no-check-certificate` is auto-added** by `SubtitleFetcher.buildYtDlpCommand()` whenever a proxy is configured — this is required because ScraperAPI's proxy intercepts TLS, not a bug or an accidental weakening of the no-proxy/local-dev path.
+- **Fail-fast, no fallback chain**: if the proxy is unreachable or YouTube still blocks the request, `SubtitleFetcher` throws `SubtitleNotFoundException` (surfaced as an HTTP 404) rather than retrying through a different provider or mechanism.
+- **Before wiring in a new proxy value**, verify egress works from the VPS itself: `curl -k -x 'http://scraperapi:<API_KEY>@proxy-server.scraperapi.com:8001' -v https://www.youtube.com/watch?v=dQw4w9WgXcQ -o /dev/null`. A hang or connection error means the VPS's outbound (egress) security rules are blocking the proxy port — a firewall/security-list problem, not something fixable in application code.
+- Proxy credentials embedded in the URL are redacted (`SubtitleFetcher.redactCredentials()`) before appearing in logs or exception messages — do not bypass this when adding new logging around yt-dlp output.
+
 ## Checking Documentation
 
 **Important**: when implement any lib/framework-specific feature, always check the appropriate documentation using the Context7 MCP server before writing any code

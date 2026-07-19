@@ -109,7 +109,9 @@ public class SubtitleFetcher {
         if (!process.waitFor(TIMEOUT_FETCH_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
             reader.join(2000);
-            log.warn("yt-dlp timed out after {}s for videoId={}", TIMEOUT_FETCH_SECONDS, videoId);
+            String partialOutput = redactCredentials(truncate(outputBuffer.toString(StandardCharsets.UTF_8), 500));
+            log.warn("yt-dlp timed out after {}s for videoId={}, partial output: {}",
+                    TIMEOUT_FETCH_SECONDS, videoId, partialOutput);
             throw new SubtitleNotFoundException("Subtitle fetch timed out after " + TIMEOUT_FETCH_SECONDS
                     + "s (proxy may be unreachable) for video: " + videoId);
         }
@@ -155,7 +157,12 @@ public class SubtitleFetcher {
     List<String> buildYtDlpCommand(String videoId, String outTemplate) {
         // Build yt-dlp command:
         // --write-auto-sub      → auto-generated subtitles
-        // --sub-lang            → prefer English
+        // --sub-lang en,vi      → exact language codes only. YouTube auto-translates the English
+        //                         track into dozens of "en-XX" codes (en-ar, en-bg, en-zh-CN, ...);
+        //                         a wildcard like "en.*" matches ALL of them, not just "en", causing
+        //                         yt-dlp to download 30+ subtitle files per request. Through a proxy
+        //                         this is slow enough to blow past any reasonable timeout and can
+        //                         fail outright partway through — exact codes avoid this entirely.
         // --skip-download       → don't download video
         // --convert-subs vtt    → convert to VTT format
         // --js-runtimes node    → use Node.js as JS runtime
@@ -164,14 +171,16 @@ public class SubtitleFetcher {
                 "yt-dlp",
                 "--write-auto-sub",
                 "--write-sub",
-                "--sub-lang", "en.*,vi",
+                "--sub-lang", "en,vi",
                 "--skip-download",
                 "--convert-subs", "vtt",
                 "-o", outTemplate,
                 "--no-playlist",
                 "--quiet",
                 "--js-runtimes", "node",
-                "--remote-components", "ejs:github"
+                "--remote-components", "ejs:github",
+                "--socket-timeout", "15",
+                "--retries", "2"
         ));
 
         // Add proxy if configured (changes outbound IP). ScraperAPI's proxy intercepts TLS,

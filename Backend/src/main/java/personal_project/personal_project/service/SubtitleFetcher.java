@@ -167,6 +167,11 @@ public class SubtitleFetcher {
         // --convert-subs vtt    → convert to VTT format
         // --js-runtimes node    → use Node.js as JS runtime
         // --remote-components   → download EJS challenge solver (bypasses n-challenge bot detection)
+        // --extractor-args player_client=web → by default yt-dlp queries several player API
+        //   clients (web, android_vr, web_safari...) to build a complete video-format list. We
+        //   skip the actual video download, so we only need whichever client's response carries
+        //   caption info — and the extra clients (esp. android_vr) have proven unreliable through
+        //   the proxy, burning the whole timeout budget on retries before subtitles are even fetched.
         List<String> cmd = new ArrayList<>(List.of(
                 "yt-dlp",
                 "--write-auto-sub",
@@ -179,6 +184,7 @@ public class SubtitleFetcher {
                 "--quiet",
                 "--js-runtimes", "node",
                 "--remote-components", "ejs:github",
+                "--extractor-args", "youtube:player_client=web",
                 "--socket-timeout", "15",
                 "--retries", "2"
         ));

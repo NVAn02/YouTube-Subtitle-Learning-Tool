@@ -5,10 +5,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Fetches raw subtitle data from YouTube using yt-dlp as a subprocess.
@@ -26,6 +29,10 @@ public class SubtitleFetcher {
 
     @Value("${ytdlp.proxy-url:}")
     private String proxyUrl;
+
+    private static final int TIMEOUT_VERSION_CHECK_SECONDS = 10;
+    private static final int TIMEOUT_FETCH_SECONDS = 60;
+    private static final Pattern CREDENTIALS_PATTERN = Pattern.compile("://[^/@\\s]+@");
 
     /**
      * Fetch raw subtitle content for a given YouTube video ID.
@@ -64,8 +71,11 @@ public class SubtitleFetcher {
             Process p = new ProcessBuilder("yt-dlp", "--version")
                     .redirectErrorStream(true)
                     .start();
-            int exit = p.waitFor();
-            return exit == 0;
+            if (!p.waitFor(TIMEOUT_VERSION_CHECK_SECONDS, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                return false;
+            }
+            return p.exitValue() == 0;
         } catch (Exception e) {
             return false;
         }
@@ -77,55 +87,38 @@ public class SubtitleFetcher {
         String tmpDir = System.getProperty("java.io.tmpdir");
         String outTemplate = tmpDir + "/yt-subtitle-" + UUID.randomUUID() + ".%(ext)s";
 
-        // Build yt-dlp command:
-        // --write-auto-sub      → auto-generated subtitles
-        // --sub-lang            → prefer English
-        // --skip-download       → don't download video
-        // --convert-subs vtt    → convert to VTT format
-        // --js-runtimes node    → use Node.js as JS runtime
-        // --remote-components   → download EJS challenge solver (bypasses n-challenge bot detection)
-        List<String> cmd = new ArrayList<>(List.of(
-                "yt-dlp",
-                "--write-auto-sub",
-                "--write-sub",
-                "--sub-lang", "en.*,vi",
-                "--skip-download",
-                "--convert-subs", "vtt",
-                "-o", outTemplate,
-                "--no-playlist",
-                "--quiet",
-                "--js-runtimes", "node",
-                "--remote-components", "ejs:github"
-        ));
-
-        // Add proxy if configured (changes outbound IP)
-        if (proxyUrl != null && !proxyUrl.isBlank()) {
-            cmd.add("--proxy");
-            cmd.add(proxyUrl);
-            log.debug("Using proxy for yt-dlp");
-        }
-
-        // Add cookies if available (provides YouTube authentication)
-        File cookiesFile = new File(COOKIES_PATH);
-        if (cookiesFile.exists() && cookiesFile.isFile()) {
-            cmd.add("--cookies");
-            cmd.add(COOKIES_PATH);
-            log.debug("Using cookies from {}", COOKIES_PATH);
-        } else {
-            log.warn("No cookies file found at {}. YouTube may block requests.", COOKIES_PATH);
-        }
-
-        cmd.add("https://www.youtube.com/watch?v=" + videoId);
+        List<String> cmd = buildYtDlpCommand(videoId, outTemplate);
 
         log.debug("Running yt-dlp for videoId={}", videoId);
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();
 
-        // Capture output for debugging
-        String output = new String(process.getInputStream().readAllBytes());
-        int exitCode = process.waitFor();
-        log.debug("yt-dlp exit={}, output={}", exitCode, output);
+        // Read stdout on a background thread so a stalled proxy connection (which stops
+        // yt-dlp from ever closing stdout) can't block this thread ahead of the waitFor() timeout below.
+        ByteArrayOutputStream outputBuffer = new ByteArrayOutputStream();
+        Thread reader = new Thread(() -> {
+            try {
+                process.getInputStream().transferTo(outputBuffer);
+            } catch (IOException ignored) {
+            }
+        });
+        reader.setDaemon(true);
+        reader.start();
+
+        if (!process.waitFor(TIMEOUT_FETCH_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            reader.join(2000);
+            log.warn("yt-dlp timed out after {}s for videoId={}", TIMEOUT_FETCH_SECONDS, videoId);
+            throw new SubtitleNotFoundException("Subtitle fetch timed out after " + TIMEOUT_FETCH_SECONDS
+                    + "s (proxy may be unreachable) for video: " + videoId);
+        }
+        reader.join(2000);
+
+        int exitCode = process.exitValue();
+        String output = outputBuffer.toString(StandardCharsets.UTF_8);
+        log.debug("yt-dlp exit={}, output={}", exitCode, redactCredentials(output));
+        checkExitCode(exitCode, output, videoId);
 
         // Find the downloaded .vtt file
         File tmpDirFile = new File(tmpDir);
@@ -153,6 +146,78 @@ public class SubtitleFetcher {
         for (File f : vttFiles) f.delete();
 
         return vttToXml(vttContent);
+    }
+
+    /**
+     * Builds the yt-dlp command for fetching subtitles. Package-private and free of process
+     * spawning so it can be unit-tested directly.
+     */
+    List<String> buildYtDlpCommand(String videoId, String outTemplate) {
+        // Build yt-dlp command:
+        // --write-auto-sub      → auto-generated subtitles
+        // --sub-lang            → prefer English
+        // --skip-download       → don't download video
+        // --convert-subs vtt    → convert to VTT format
+        // --js-runtimes node    → use Node.js as JS runtime
+        // --remote-components   → download EJS challenge solver (bypasses n-challenge bot detection)
+        List<String> cmd = new ArrayList<>(List.of(
+                "yt-dlp",
+                "--write-auto-sub",
+                "--write-sub",
+                "--sub-lang", "en.*,vi",
+                "--skip-download",
+                "--convert-subs", "vtt",
+                "-o", outTemplate,
+                "--no-playlist",
+                "--quiet",
+                "--js-runtimes", "node",
+                "--remote-components", "ejs:github"
+        ));
+
+        // Add proxy if configured (changes outbound IP). ScraperAPI's proxy intercepts TLS,
+        // so --no-check-certificate is required whenever a proxy is set — see CLAUDE.md.
+        if (proxyUrl != null && !proxyUrl.isBlank()) {
+            cmd.add("--proxy");
+            cmd.add(proxyUrl);
+            cmd.add("--no-check-certificate");
+            log.debug("Using proxy for yt-dlp");
+        }
+
+        // Add cookies if available (provides YouTube authentication)
+        File cookiesFile = new File(COOKIES_PATH);
+        if (cookiesFile.exists() && cookiesFile.isFile()) {
+            cmd.add("--cookies");
+            cmd.add(COOKIES_PATH);
+            log.debug("Using cookies from {}", COOKIES_PATH);
+        } else {
+            log.warn("No cookies file found at {}. YouTube may block requests.", COOKIES_PATH);
+        }
+
+        cmd.add("https://www.youtube.com/watch?v=" + videoId);
+        return cmd;
+    }
+
+    /**
+     * Throws if yt-dlp exited with a non-zero code, surfacing its (redacted, truncated) output
+     * instead of letting the caller fall through to a generic "no .vtt file found" message that
+     * would mask the real cause (proxy auth failure, quota exceeded, network unreachable, etc).
+     */
+    void checkExitCode(int exitCode, String output, String videoId) {
+        if (exitCode != 0) {
+            throw new SubtitleNotFoundException("yt-dlp exited with code " + exitCode
+                    + " for video " + videoId + ": " + redactCredentials(truncate(output, 500)));
+        }
+    }
+
+    /** Strips embedded proxy credentials (e.g. a ScraperAPI API key) from text before logging/throwing. */
+    static String redactCredentials(String text) {
+        if (text == null) return null;
+        return CREDENTIALS_PATTERN.matcher(text).replaceAll("://***@");
+    }
+
+    private static String truncate(String text, int maxLength) {
+        if (text == null || text.length() <= maxLength) return text;
+        return text.substring(0, maxLength) + "...";
     }
 
     /**

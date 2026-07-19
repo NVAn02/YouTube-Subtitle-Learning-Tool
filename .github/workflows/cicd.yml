@@ -104,6 +104,21 @@ jobs:
     needs: docker-build-push
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      # Keep /opt/sublearn/docker-compose.yml in sync with docker-compose.prod.yml on every deploy,
+      # so the server always runs the images this pipeline just built — never a stale manually-copied file.
+      - name: Copy production compose file to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: "docker-compose.prod.yml"
+          target: "/opt/sublearn"
+          strip_components: 0
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -114,6 +129,7 @@ jobs:
           script: |
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
             cd /opt/sublearn
+            mv docker-compose.prod.yml docker-compose.yml
             docker compose pull
             docker compose up -d
             docker image prune -f

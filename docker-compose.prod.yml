@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: sublearn-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sublearn
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  backend:
+    image: ghcr.io/nvan02/youtube-subtitle-learning-tool/backend:latest
+    container_name: sublearn-backend
+    restart: unless-stopped
+    ports:
+      - "8081:8085"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/sublearn?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://168.138.195.138:8082
+      # ScraperAPI proxy — routes yt-dlp through a non-blocked IP (needed on the Oracle VPS).
+      # Set the real value via an untracked .env file in /opt/sublearn on the server — never commit a real key here.
+      - YTDLP_PROXY_URL=${YTDLP_PROXY_URL:-}
+    volumes:
+      - ./cookies.txt:/app/cookies.txt:ro
+    depends_on:
+      - db
+
+  frontend:
+    image: ghcr.io/nvan02/youtube-subtitle-learning-tool/frontend:latest
+    container_name: sublearn-frontend
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:

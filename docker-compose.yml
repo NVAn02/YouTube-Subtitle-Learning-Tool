@@ -11,6 +11,13 @@ services:
     volumes:
       - db_data:/var/lib/mysql
 
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    container_name: sublearn-pot-provider
+    restart: unless-stopped
+    # No published ports — only reachable from other containers on the compose network (backend
+    # talks to it via http://bgutil-provider:4416, see SubtitleFetcher's --extractor-args).
+
   backend:
     build:
       context: ./Backend
@@ -34,6 +41,7 @@ services:
       - ./cookies.txt:/app/cookies.txt
     depends_on:
       - db
+      - bgutil-provider
 
   frontend:
     build:

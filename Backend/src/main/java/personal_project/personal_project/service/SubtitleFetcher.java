@@ -98,21 +98,21 @@ public class SubtitleFetcher {
                 "--remote-components", "ejs:github"
         ));
 
-        // Add proxy if configured (preferred — eliminates cookie expiration issues)
+        // Add proxy if configured (changes outbound IP)
         if (proxyUrl != null && !proxyUrl.isBlank()) {
             cmd.add("--proxy");
             cmd.add(proxyUrl);
             log.debug("Using proxy for yt-dlp");
+        }
+
+        // Add cookies if available (provides YouTube authentication)
+        File cookiesFile = new File(COOKIES_PATH);
+        if (cookiesFile.exists() && cookiesFile.isFile()) {
+            cmd.add("--cookies");
+            cmd.add(COOKIES_PATH);
+            log.debug("Using cookies from {}", COOKIES_PATH);
         } else {
-            // Fallback: use cookies if no proxy is configured
-            File cookiesFile = new File(COOKIES_PATH);
-            if (cookiesFile.exists() && cookiesFile.isFile()) {
-                cmd.add("--cookies");
-                cmd.add(COOKIES_PATH);
-                log.debug("Using cookies from {}", COOKIES_PATH);
-            } else {
-                log.warn("No proxy or cookies configured. YouTube may block requests as bot detection.");
-            }
+            log.warn("No cookies file found at {}. YouTube may block requests.", COOKIES_PATH);
         }
 
         cmd.add("https://www.youtube.com/watch?v=" + videoId);

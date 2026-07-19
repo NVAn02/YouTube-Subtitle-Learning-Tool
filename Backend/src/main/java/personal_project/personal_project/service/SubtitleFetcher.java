@@ -167,11 +167,10 @@ public class SubtitleFetcher {
         // --convert-subs vtt    → convert to VTT format
         // --js-runtimes node    → use Node.js as JS runtime
         // --remote-components   → download EJS challenge solver (bypasses n-challenge bot detection)
-        //
-        // NOTE: do not restrict --extractor-args player_client=web here. YouTube's "web" client
-        // requires a PO Token to serve subtitles at all; yt-dlp's default multi-client behavior
-        // (falling through to e.g. the android_vr client) is precisely what avoids that requirement.
-        // Restricting to "web" alone breaks subtitle fetching entirely (all languages get dropped).
+        // --extractor-args youtubepot-bgutilhttp:base_url=... → point yt-dlp's PO Token plugin
+        //   (bgutil-ytdlp-pot-provider, installed in the image) at the bgutil-provider sidecar
+        //   container so the "web" client can get a valid PO Token and serve subtitles directly,
+        //   instead of relying on an unreliable fallback client through the proxy.
         List<String> cmd = new ArrayList<>(List.of(
                 "yt-dlp",
                 "--write-auto-sub",
@@ -184,6 +183,7 @@ public class SubtitleFetcher {
                 "--quiet",
                 "--js-runtimes", "node",
                 "--remote-components", "ejs:github",
+                "--extractor-args", "youtubepot-bgutilhttp:base_url=http://bgutil-provider:4416",
                 "--socket-timeout", "15",
                 "--retries", "2"
         ));

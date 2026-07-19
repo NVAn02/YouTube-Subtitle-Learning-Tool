@@ -31,7 +31,7 @@ public class SubtitleFetcher {
     private String proxyUrl;
 
     private static final int TIMEOUT_VERSION_CHECK_SECONDS = 10;
-    private static final int TIMEOUT_FETCH_SECONDS = 60;
+    private static final int TIMEOUT_FETCH_SECONDS = 90;
     private static final Pattern CREDENTIALS_PATTERN = Pattern.compile("://[^/@\\s]+@");
 
     /**
@@ -167,11 +167,11 @@ public class SubtitleFetcher {
         // --convert-subs vtt    → convert to VTT format
         // --js-runtimes node    → use Node.js as JS runtime
         // --remote-components   → download EJS challenge solver (bypasses n-challenge bot detection)
-        // --extractor-args player_client=web → by default yt-dlp queries several player API
-        //   clients (web, android_vr, web_safari...) to build a complete video-format list. We
-        //   skip the actual video download, so we only need whichever client's response carries
-        //   caption info — and the extra clients (esp. android_vr) have proven unreliable through
-        //   the proxy, burning the whole timeout budget on retries before subtitles are even fetched.
+        //
+        // NOTE: do not restrict --extractor-args player_client=web here. YouTube's "web" client
+        // requires a PO Token to serve subtitles at all; yt-dlp's default multi-client behavior
+        // (falling through to e.g. the android_vr client) is precisely what avoids that requirement.
+        // Restricting to "web" alone breaks subtitle fetching entirely (all languages get dropped).
         List<String> cmd = new ArrayList<>(List.of(
                 "yt-dlp",
                 "--write-auto-sub",
@@ -184,7 +184,6 @@ public class SubtitleFetcher {
                 "--quiet",
                 "--js-runtimes", "node",
                 "--remote-components", "ejs:github",
-                "--extractor-args", "youtube:player_client=web",
                 "--socket-timeout", "15",
                 "--retries", "2"
         ));

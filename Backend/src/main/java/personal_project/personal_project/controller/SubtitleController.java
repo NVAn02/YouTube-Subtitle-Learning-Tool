@@ -10,6 +10,8 @@ import personal_project.personal_project.dto.*;
 import personal_project.personal_project.entity.Video;
 import personal_project.personal_project.repository.SubtitleRepository;
 import personal_project.personal_project.repository.VideoRepository;
+import personal_project.personal_project.entity.ErrorSeverity;
+import personal_project.personal_project.service.ErrorLogService;
 import personal_project.personal_project.service.NlpService;
 import personal_project.personal_project.service.SubtitleFetcher;
 import personal_project.personal_project.service.SubtitleParser;
@@ -40,6 +42,7 @@ public class SubtitleController {
     private final VideoRepository videoRepository;
     private final SubtitleRepository subtitleRepository;
     private final ObjectMapper objectMapper;
+    private final ErrorLogService errorLogService;
 
     @PostMapping
     public ResponseEntity<?> getSubtitles(@RequestBody SubtitleRequest request) {
@@ -120,9 +123,11 @@ public class SubtitleController {
 
         } catch (SubtitleFetcher.SubtitleNotFoundException e) {
             log.warn("No subtitles for videoId={}: {}", videoId, e.getMessage());
+            errorLogService.record(ErrorSeverity.WARN, "SUBTITLE_FETCH", e.getMessage(), e, videoId);
             return ResponseEntity.status(404).body(new ErrorResponse(e.getMessage()));
         } catch (Exception e) {
             log.error("Unexpected error processing videoId={}: {}", videoId, e.getMessage(), e);
+            errorLogService.record(ErrorSeverity.ERROR, "SUBTITLE_FETCH", e.getMessage(), e, videoId);
             return ResponseEntity.internalServerError()
                     .body(new ErrorResponse("An unexpected error occurred. Please try again."));
         }

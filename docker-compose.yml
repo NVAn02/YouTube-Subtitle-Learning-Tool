@@ -37,6 +37,10 @@ services:
       # Set via an untracked .env file or the shell environment before `docker compose up` — never commit a real key.
       # YTDLP_PROXY_URL=http://scraperapi:YOUR_API_KEY_HERE@proxy-server.scraperapi.com:8001
       - YTDLP_PROXY_URL=${YTDLP_PROXY_URL:-}
+      # First-admin bootstrap: seeds one admin account on first boot if none exists yet.
+      # Set both via an untracked .env file or the shell environment before `docker compose up`.
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
     volumes:
       - ./cookies.txt:/app/cookies.txt
     depends_on:

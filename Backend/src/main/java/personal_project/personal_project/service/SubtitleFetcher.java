@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 /**
  * Fetches raw subtitle data from YouTube using yt-dlp as a subprocess.
@@ -32,7 +31,6 @@ public class SubtitleFetcher {
 
     private static final int TIMEOUT_VERSION_CHECK_SECONDS = 10;
     private static final int TIMEOUT_FETCH_SECONDS = 90;
-    private static final Pattern CREDENTIALS_PATTERN = Pattern.compile("://[^/@\\s]+@");
 
     /**
      * Fetch raw subtitle content for a given YouTube video ID.
@@ -225,8 +223,7 @@ public class SubtitleFetcher {
 
     /** Strips embedded proxy credentials (e.g. a ScraperAPI API key) from text before logging/throwing. */
     static String redactCredentials(String text) {
-        if (text == null) return null;
-        return CREDENTIALS_PATTERN.matcher(text).replaceAll("://***@");
+        return CredentialRedactor.redact(text);
     }
 
     private static String truncate(String text, int maxLength) {

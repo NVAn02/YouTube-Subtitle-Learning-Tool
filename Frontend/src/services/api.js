@@ -55,3 +55,51 @@ export async function getSavedWords() {
   const res = await api.get('/saved-words');
   return res.data;
 }
+
+// ── Admin CMS ──────────────────────────────────────────────
+
+export async function getUsers(params = {}) {
+  const res = await api.get('/admin/users', { params });
+  return res.data;
+}
+
+export async function updateUserRole(id, role) {
+  const res = await api.patch(`/admin/users/${id}/role`, { role });
+  return res.data;
+}
+
+export async function updateUserStatus(id, enabled) {
+  const res = await api.patch(`/admin/users/${id}/status`, { enabled });
+  return res.data;
+}
+
+export async function getVideos(params = {}) {
+  const res = await api.get('/admin/videos', { params });
+  return res.data;
+}
+
+export async function deleteVideo(id) {
+  await api.delete(`/admin/videos/${id}`);
+}
+
+export async function getTranslations(params = {}) {
+  const res = await api.get('/admin/translations', { params });
+  return res.data;
+}
+
+export async function deleteTranslation(id) {
+  await api.delete(`/admin/translations/${id}`);
+}
+
+export async function getErrorLogs(params = {}) {
+  const res = await api.get('/admin/error-logs', { params });
+  return res.data;
+}
+
+export async function deleteErrorLog(id) {
+  await api.delete(`/admin/error-logs/${id}`);
+}
+
+export async function deleteErrorLogsMatching(params = {}) {
+  await api.delete('/admin/error-logs', { params });
+}

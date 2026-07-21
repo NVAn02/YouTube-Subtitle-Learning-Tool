@@ -38,7 +38,7 @@ public class AuthController {
         repository.save(user);
 
         var jwtToken = jwtService.generateToken(user);
-        return ResponseEntity.ok(new AuthResponse(jwtToken, user.getUsername()));
+        return ResponseEntity.ok(new AuthResponse(jwtToken, user.getUsername(), user.getRole().name()));
     }
 
     @PostMapping("/login")
@@ -57,6 +57,6 @@ public class AuthController {
         var user = repository.findByUsername(request.getUsername())
                 .orElseThrow();
         var jwtToken = jwtService.generateToken(user);
-        return ResponseEntity.ok(new AuthResponse(jwtToken, user.getUsername()));
+        return ResponseEntity.ok(new AuthResponse(jwtToken, user.getUsername(), user.getRole().name()));
     }
 }

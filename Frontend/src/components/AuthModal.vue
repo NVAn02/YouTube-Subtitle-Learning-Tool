@@ -71,7 +71,8 @@ const handleSubmit = async () => {
     }
     localStorage.setItem('token', data.token);
     localStorage.setItem('username', data.username);
-    emit('auth-success', data.username);
+    localStorage.setItem('role', data.role);
+    emit('auth-success', data.username, data.role);
     close();
   } catch (err) {
     error.value = err.response?.data?.error || 'Authentication failed';

@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import personal_project.personal_project.dto.ErrorResponse;
 import personal_project.personal_project.dto.TranslateRequest;
 import personal_project.personal_project.dto.TranslateResponse;
+import personal_project.personal_project.entity.ErrorSeverity;
+import personal_project.personal_project.service.ErrorLogService;
 import personal_project.personal_project.service.NlpService;
 import personal_project.personal_project.service.TranslationService;
 
@@ -21,6 +23,7 @@ import personal_project.personal_project.service.TranslationService;
 public class TranslateController {
 
     private final TranslationService translationService;
+    private final ErrorLogService errorLogService;
 
     @PostMapping
     public ResponseEntity<?> translate(@RequestBody TranslateRequest request) {
@@ -51,6 +54,7 @@ public class TranslateController {
             return ResponseEntity.ok(new TranslateResponse(translation.getTranslatedText(), translation.getExplanation()));
         } catch (TranslationService.TranslationException e) {
             log.error("Translation failed: {}", e.getMessage());
+            errorLogService.record(ErrorSeverity.ERROR, "TRANSLATION", e.getMessage(), e, request.getWord());
             return ResponseEntity.internalServerError()
                     .body(new ErrorResponse("Không dịch được, thử lại sau."));
         }
